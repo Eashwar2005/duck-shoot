@@ -5,7 +5,7 @@ import random
 import time
 
 # ===============================
-# Load & resize crosshair
+# Load & resize assets
 # ===============================
 crosshair_raw = cv2.imread("crosshair.png", cv2.IMREAD_UNCHANGED)
 duck_raw = cv2.imread("duck.png", cv2.IMREAD_UNCHANGED)
@@ -22,7 +22,7 @@ crosshair = cv2.resize(crosshair_raw, (CROSSHAIR_SIZE, CROSSHAIR_SIZE))
 duck = cv2.resize(duck_raw, (DUCK_W, DUCK_H))
 
 # ===============================
-# MediaPipe Hands (YOUR VERSION)
+# MediaPipe Hands (WORKING API)
 # ===============================
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
@@ -44,7 +44,7 @@ if not cap.isOpened():
 # ===============================
 # Fullscreen window
 # ===============================
-WINDOW_NAME = "Duck Shoot – Middle Finger Aim"
+WINDOW_NAME = "Duck Shoot – Stable Aim"
 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 cv2.setWindowProperty(
     WINDOW_NAME,
@@ -53,7 +53,7 @@ cv2.setWindowProperty(
 )
 
 # ===============================
-# Smoothing variables (UNCHANGED)
+# Smoothing (GOOD ENOUGH)
 # ===============================
 smooth_x, smooth_y = None, None
 SMOOTHING = 0.25
@@ -69,7 +69,24 @@ score = 0
 last_fire = 0
 FIRE_RATE = 0.15
 
-print("[INFO] Duck Shoot started (good logic base)")
+print("[INFO] Duck Shoot started (thumb-straight fire)")
+
+# ===============================
+# Helper: Safe PNG overlay
+# ===============================
+def overlay_png(img, png, x, y):
+    h, w = png.shape[:2]
+    ih, iw = img.shape[:2]
+
+    if x < 0 or y < 0 or x + w > iw or y + h > ih:
+        return
+
+    alpha = png[:, :, 3] / 255.0
+    for c in range(3):
+        img[y:y+h, x:x+w, c] = (
+            alpha * png[:, :, c] +
+            (1 - alpha) * img[y:y+h, x:x+w, c]
+        )
 
 # ===============================
 # Main loop
@@ -98,7 +115,7 @@ while True:
         )
 
         # ===============================
-        # Middle finger MCP (landmark 9)
+        # AIM: Middle finger MCP (landmark 9)
         # ===============================
         lm = hand.landmark[9]
         raw_x = int(lm.x * w)
@@ -113,12 +130,17 @@ while True:
         cx, cy = smooth_x, smooth_y
 
         # ===============================
-        # Auto-fire (thumb bent + index extended)
+        # FIRE LOGIC (THUMB STRAIGHT)
         # ===============================
-        thumb_bent = hand.landmark[4].y > hand.landmark[3].y
+        thumb_tip = hand.landmark[4]
+        thumb_mcp = hand.landmark[2]
+
+        thumb_dist = abs(thumb_tip.x - thumb_mcp.x) + abs(thumb_tip.y - thumb_mcp.y)
+        thumb_straight = thumb_dist > 0.12
+
         index_extended = hand.landmark[8].y < hand.landmark[6].y
 
-        if thumb_bent and index_extended:
+        if thumb_straight and index_extended:
             firing = True
 
     # ===============================
@@ -145,24 +167,10 @@ while True:
                 duck_y = random.randint(120, 360)
 
     # ===============================
-    # Safe overlay function
+    # Draw duck & crosshair
     # ===============================
-    def overlay_png(img, png, x, y):
-        ph, pw = png.shape[:2]
-        if x < 0 or y < 0 or x + pw > w or y + ph > h:
-            return
-
-        alpha = png[:, :, 3] / 255.0
-        for c in range(3):
-            img[y:y+ph, x:x+pw, c] = (
-                alpha * png[:, :, c] +
-                (1 - alpha) * img[y:y+ph, x:x+pw, c]
-            )
-
-    # Draw duck
     overlay_png(frame, duck, duck_x, duck_y)
 
-    # Draw crosshair
     if cx is not None:
         overlay_png(
             frame,
@@ -171,7 +179,9 @@ while True:
             cy - CROSSHAIR_SIZE // 2
         )
 
+    # ===============================
     # HUD
+    # ===============================
     cv2.putText(
         frame,
         f"Score: {score}",
@@ -190,15 +200,3 @@ while True:
 cap.release()
 hands.close()
 cv2.destroyAllWindows()
-
-
-
-
-
-
-
-
-
-
-
-
